@@ -27,7 +27,7 @@ func Test(t *testing.T) {
 			dir:  "c",
 		},
 		{
-			name: "too many formatting directives",
+			name: "multiple error-wrapping directives",
 			dir:  "d",
 		},
 		{

@@ -29,6 +29,8 @@ var Analyzer = &analysis.Analyzer{
 	RunDespiteErrors: true,
 }
 
+var errorType = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
+
 // Run is the runner for an analysis pass
 func run(pass *analysis.Pass) (interface{}, error) {
 	inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
@@ -89,14 +91,13 @@ func run(pass *analysis.Pass) (interface{}, error) {
 			}
 		}
 
-		if !hasError {
+		if !hasError && !strings.Contains(format, "%w") {
 			return
 		}
 
 		argNum := firstArg
 		maxArgNum := firstArg
 		anyIndex := false
-		anyW := false
 		newFormat := []byte(format)
 		for i, w := 0, 0; i < len(format); i += w {
 			w = 1
@@ -126,11 +127,22 @@ func run(pass *analysis.Pass) (interface{}, error) {
 			}
 
 			if state.verb == 'w' {
-				if anyW {
-					pass.Reportf(call.Pos(), "%s call has more than one error-wrapping directive %%w", state.name)
+				if len(state.argNums) == 0 {
+					continue
+				}
+				wArg := state.argNums[len(state.argNums)-1]
+				if wArg < 0 || wArg >= len(call.Args) {
+					continue
+				}
+				if call.Ellipsis.IsValid() && wArg == len(call.Args)-1 {
+					// The argument is a slice whose expanded elements cannot be
+					// checked individually at analysis time.
+					continue
+				}
+				if !isPotentialErrorType(pass.TypesInfo.TypeOf(call.Args[wArg])) {
+					pass.Reportf(call.Pos(), "%s call has %%w directive with non-error operand", fn.Name())
 					return
 				}
-				anyW = true
 				continue
 			}
 
@@ -216,6 +228,20 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	})
 
 	return nil, nil
+}
+
+// isPotentialErrorType reports whether t implements error or is an interface
+// that may contain a value implementing error at runtime.
+func isPotentialErrorType(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+	if _, ok := t.Underlying().(*types.Interface); ok {
+		// An interface value may contain an error at runtime, even when the
+		// static interface does not itself implement error.
+		return true
+	}
+	return types.Implements(t, errorType)
 }
 
 // render returns the pretty-print of the given node

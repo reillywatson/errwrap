@@ -14,7 +14,7 @@ func foo() error {
 func bar() error {
 	err := errors.New("bar!")
 	err2 := errors.New("bar!")
-	return fmt.Errorf("failed with errors %w, %s", err, err2) // want `call could wrap the error with error-wrapping directive %w`
+	return fmt.Errorf("failed with errors %w, %w", err, err2) // want `call could wrap the error with error-wrapping directive %w`
 }
 
 func baz() error {
